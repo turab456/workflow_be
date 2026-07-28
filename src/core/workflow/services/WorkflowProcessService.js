@@ -16,7 +16,7 @@ class WorkflowProcessService {
       definition = await WorkflowDefinition.findOne({
         where: { code: workflowCode, customer_id: customerId, status: 'ACTIVE' }
       });
-    }
+    }   
 
     // Fallback to global definition
     if (!definition) {

@@ -7,8 +7,8 @@ class ContractRequestController {
       const { page, limit, status, search } = req.query;
       const result = await contractRequestService.getAllRequests({
         userId: req.user.id,
-        role: req.user.role,
-        page, limit, status, search
+        role:   req.user.role,
+        page, limit, status, search,
       });
       return ApiResponse.success(res, result, 'Contract Requests fetched successfully');
     } catch (error) {
@@ -34,9 +34,39 @@ class ContractRequestController {
     }
   }
 
+  /**
+   * POST /contract-requests/:id/decision
+   *
+   * Body: { action: 'Approved'|'Rejected'|'SentBack', comment?: string, legalRequired?: boolean }
+   *
+   * Triggers the full KIE Claim → Start → Complete lifecycle, then
+   * synchronises PostgreSQL state.
+   */
+  async processDecision(req, res, next) {
+    try {
+      const request = await contractRequestService.processDecision(
+        req.params.id,
+        req.body,
+        req.user
+      );
+      return ApiResponse.success(res, request, 'Workflow decision processed successfully');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * PUT /contract-requests/:id
+   *
+   * Generic field update (content edits, not workflow actions).
+   */
   async updateRequest(req, res, next) {
     try {
-      const request = await contractRequestService.updateRequest(req.params.id, req.body, req.user);
+      const request = await contractRequestService.updateRequest(
+        req.params.id,
+        req.body,
+        req.user
+      );
       return ApiResponse.success(res, request, 'Contract Request updated successfully');
     } catch (error) {
       next(error);
