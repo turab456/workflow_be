@@ -6,29 +6,34 @@ const morgan = require('morgan');
 
 const app = express();
 
-// Middleware
+// ── Middleware ────────────────────────────────────────────────────────────────
 app.use(helmet());
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+  origin: process.env.ALLOWED_ORIGINS
+    ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim())
+    : '*',
   credentials: true,
 }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(morgan('dev'));
 
-// Health check
+// ── Health Check ──────────────────────────────────────────────────────────────
 app.get('/health', (req, res) => {
-  res.status(200).json({ status: 'UP', message: 'CMS Backend is running.' });
+  res.status(200).json({
+    status: 'UP',
+    service: 'Docqube Workflow Engine',
+    timestamp: new Date().toISOString(),
+  });
 });
 
-// ── API Routes ──────────────────────────────────────────────────────────────
-const authRoutes = require('./core/auth/routes');
-const contractRequestRoutes = require('./modules/contract/request/routes');
+// ── Workflow Engine API ───────────────────────────────────────────────────────
+// Generic, business-agnostic workflow endpoints for Docqube.
+// Auth/RBAC is managed by Docqube; this engine trusts the incoming JWT.
+const workflowRoutes = require('./core/workflow/routes');
+app.use('/api/v1/workflow', workflowRoutes);
 
-app.use('/api/v1/auth', authRoutes);
-app.use('/api/v1/contract-requests', contractRequestRoutes);
-
-// ── Global Error Handler ─────────────────────────────────────────────────────
+// ── Global Error Handler ──────────────────────────────────────────────────────
 const errorHandler = require('./shared/middleware/errorHandler');
 app.use(errorHandler);
 

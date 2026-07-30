@@ -6,19 +6,16 @@ const AppError = require('../../../shared/exceptions/AppError');
 const ACTIVE_TASK_STATUSES = ['Ready', 'Reserved', 'InProgress'];
 
 class WorkflowTaskService {
-  get legacyRoleToKieUser() {
-    return {
-      DEPARTMENT_HEAD: process.env.KIE_USER_DEPT_HEAD || 'department_head_user',
-      PROCUREMENT: process.env.KIE_USER_PROCUREMENT || 'procurement_user',
-      LEGAL: process.env.KIE_USER_LEGAL || 'legal_user',
-      SUPER_ADMIN: process.env.KIE_SERVER_USER || 'wbadmin',
-    };
-  }
+  async completeWorkflow(businessRecordId, actor, options = {}) {
+    const {
+      outputVariables = {},
+      workflowCode = null,
+      taskReference = null,
+    } = options;
 
-  async completeTask({ businessRecordId, workflowCode = null, outputVariables = {}, actor, taskId = null }) {
     const instance = await this._resolveInstance(businessRecordId, workflowCode);
     const kieUserId = this._resolveKieUser(actor);
-    const task = await this._findActiveTask(instance, taskId);
+    const task = await this._findActiveTask(instance, taskReference);
 
     await this._claimAndStartIfNeeded(instance.container_id, task, kieUserId);
 
@@ -29,43 +26,52 @@ class WorkflowTaskService {
       outputVariables
     );
 
-    const workflowState = await this.getWorkflowStateForInstance(instance);
+    const workflowState = await this.getWorkflowStateForBusinessRecord(businessRecordId, workflowCode);
 
     return {
-      completedTask: task,
       workflowState,
-      processInstanceId: instance.process_instance_id,
-      containerId: instance.container_id,
-      kieUserId,
+      actor: kieUserId,
+      completed: true,
     };
   }
 
-  async completeWorkflowTask(businessRecordId, outputVariables = {}, actor, options = {}) {
-    return this.completeTask({
-      businessRecordId,
+  async completeTask({ businessRecordId, workflowCode = null, outputVariables = {}, actor, taskId = null }) {
+    return this.completeWorkflow(businessRecordId, actor, {
       outputVariables,
-      actor,
-      taskId: options.taskId || null,
+      workflowCode,
+      taskReference: taskId,
+    });
+  }
+
+  async completeWorkflowTask(businessRecordId, outputVariables = {}, actor, options = {}) {
+    return this.completeWorkflow(businessRecordId, actor, {
+      outputVariables,
       workflowCode: options.workflowCode || null,
+      taskReference: options.taskId || options.taskReference || null,
     });
   }
 
   async releaseWorkflowTask(businessRecordId, actor, options = {}) {
-    const instance = await this._resolveInstance(businessRecordId, options.workflowCode || null);
+    const workflowCode = options.workflowCode || null;
+    const taskReference = options.taskId || options.taskReference || null;
+    const instance = await this._resolveInstance(businessRecordId, workflowCode);
     const kieUserId = this._resolveKieUser(actor);
-    const task = await this._findActiveTask(instance, options.taskId || null);
+    const task = await this._findActiveTask(instance, taskReference);
 
     await kieClient.releaseTask(instance.container_id, task.id, kieUserId);
-    const workflowState = await this.getWorkflowStateForInstance(instance);
+    const workflowState = await this.getWorkflowStateForBusinessRecord(businessRecordId, workflowCode);
 
     return {
-      taskId: task.id,
-      processInstanceId: instance.process_instance_id,
       workflowState,
+      released: true,
     };
   }
 
   async getWorkflowState(businessRecordId, workflowCode = null) {
+    return this.getWorkflowStateForBusinessRecord(businessRecordId, workflowCode);
+  }
+
+  async getWorkflowStateForBusinessRecord(businessRecordId, workflowCode = null) {
     const instance = await this._resolveInstance(businessRecordId, workflowCode);
     return this.getWorkflowStateForInstance(instance);
   }
@@ -92,12 +98,41 @@ class WorkflowTaskService {
     return workflowState;
   }
 
-  async getActiveTasks(businessRecordId, workflowCode = null) {
+  async getActiveTask(businessRecordId, workflowCode = null) {
     const instance = await this._resolveInstance(businessRecordId, workflowCode);
-    return kieClient.getTasksByProcessInstance(
+    const activeTasks = await kieClient.getTasksByProcessInstance(
       instance.process_instance_id,
       ACTIVE_TASK_STATUSES
     );
+
+    if (!activeTasks.length) return null;
+
+    const task = this._singleActiveTask(activeTasks, instance.process_instance_id);
+    const details = await this._safeGetTask(instance.container_id, this._taskId(task));
+    return workflowStateMapper.fromKie({
+      processInstance: {},
+      activeTasks: [task],
+      taskDetails: details ? [details] : [],
+    }).activeTask;
+  }
+
+  async getActiveTasks(businessRecordId, workflowCode = null) {
+    const instance = await this._resolveInstance(businessRecordId, workflowCode);
+    const activeTasks = await kieClient.getTasksByProcessInstance(
+      instance.process_instance_id,
+      ACTIVE_TASK_STATUSES
+    );
+
+    if (!activeTasks.length) return [];
+
+    const taskDetails = await this._getTaskDetails(instance.container_id, activeTasks);
+    const workflowState = workflowStateMapper.fromKie({
+      processInstance: {},
+      activeTasks,
+      taskDetails,
+    });
+
+    return workflowState.activeTasks;
   }
 
   async canUserActOnRecord(businessRecordId, actor, workflowCode = null) {
@@ -108,10 +143,18 @@ class WorkflowTaskService {
         instance.process_instance_id,
         ACTIVE_TASK_STATUSES
       );
+      const taskDetails = await this._getTaskDetails(instance.container_id, activeTasks);
+      const workflowState = workflowStateMapper.fromKie({
+        processInstance: {},
+        activeTasks,
+        taskDetails,
+      });
 
-      return activeTasks.some((task) => {
-        const owner = task['task-actual-owner'] || task.taskActualOwner || task.actualOwner;
-        return !owner || owner === kieUserId;
+      return workflowState.activeTasks.some((task) => {
+        if (task.actualOwner) return task.actualOwner === kieUserId;
+        return task.potentialOwners.some((owner) => {
+          return owner === kieUserId || this._matchesKieGroup(actor, owner);
+        });
       });
     } catch (error) {
       return false;
@@ -251,9 +294,38 @@ class WorkflowTaskService {
     throw new AppError('Unable to resolve KIE user for workflow actor.', 400);
   }
 
+  _matchesKieGroup(actor, owner) {
+    const kieGroups = this._resolveKieGroups(actor);
+    return kieGroups.includes(owner);
+  }
+
+  _resolveKieGroups(actor) {
+    if (!actor || typeof actor === 'string') return [];
+
+    const explicitGroups = actor.kieGroups || actor.kie_groups || actor.workflowGroups || actor.groups;
+    if (explicitGroups) return this._stringArray(explicitGroups);
+
+    if (!actor.role) return [];
+
+    const dynamicEnvKey = `KIE_GROUPS_${String(actor.role).replace(/[^a-zA-Z0-9]+/g, '_').toUpperCase()}`;
+    const envGroups = process.env[dynamicEnvKey];
+
+    if (envGroups) return this._stringArray(envGroups);
+
+    return [];
+  }
+
   _kieUserForRole(role) {
     const dynamicEnvKey = `KIE_USER_${String(role).replace(/[^a-zA-Z0-9]+/g, '_').toUpperCase()}`;
-    return process.env[dynamicEnvKey] || this.legacyRoleToKieUser[role];
+    return process.env[dynamicEnvKey];
+  }
+
+  _stringArray(value) {
+    if (Array.isArray(value)) return value.flatMap((item) => this._stringArray(item));
+    return String(value)
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean);
   }
 
   _taskId(task) {

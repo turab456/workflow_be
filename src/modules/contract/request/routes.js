@@ -1,44 +1,12 @@
-const express = require('express');
-const router = express.Router();
-const controller = require('./ContractRequestController');
-const { authenticate, authorize } = require('../../../shared/middleware/auth');
-const validate = require('../../../shared/middleware/validate');
-const {
-  createContractRequestSchema,
-  updateContractRequestSchema,
-  decisionSchema,
-} = require('./contractRequestValidator');
-
-// All routes require authentication
-router.use(authenticate);
-
-// ── Standard CRUD ────────────────────────────────────────────────────────────
-router.get('/',    controller.getAll);
-router.get('/:id', controller.getById);
-
-router.post(
-  '/',
-  authorize('BUSINESS_USER', 'SUPER_ADMIN'),
-  validate(createContractRequestSchema),
-  controller.createRequest
-);
-
-router.put(
-  '/:id',
-  validate(updateContractRequestSchema),
-  controller.updateRequest
-);
-
-router.delete('/:id', controller.deleteRequest);
-
-// ── Workflow Decision ─────────────────────────────────────────────────────────
-// Only reviewer roles may call this endpoint.
-// SUPER_ADMIN is intentionally excluded — admins should not bypass the workflow.
-router.post(
-  '/:id/decision',
-  authorize('DEPARTMENT_HEAD', 'PROCUREMENT', 'LEGAL'),
-  validate(decisionSchema),
-  controller.processDecision
-);
-
-module.exports = router;
+/**
+ * DEPRECATED — ContractRequest domain removed from this engine.
+ *
+ * Business form data (contract requests) is owned and managed by Docqube.
+ * This workflow engine is generic and business-agnostic.
+ *
+ * Workflow interactions are now handled via:
+ *   POST   /api/v1/workflow/instances
+ *   GET    /api/v1/workflow/instances/:instanceId/state
+ *   GET    /api/v1/workflow/instances/:instanceId/tasks
+ *   POST   /api/v1/workflow/instances/:instanceId/tasks/:taskId/complete
+ */
