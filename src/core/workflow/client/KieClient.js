@@ -1,20 +1,6 @@
 const axios = require('axios');
 const AppError = require('../../../shared/exceptions/AppError');
 
-/**
- * KieClient — low-level HTTP adapter for the jBPM KIE Server REST API.
- *
- * This is the ONLY file that may know about KIE Server endpoints.
- * All other services must use WorkflowProcessService or WorkflowTaskService.
- *
- * KIE Server REST reference:
- *   /containers/{containerId}/processes/{processId}/instances            → start process
- *   /containers/{containerId}/processes/instances/{pInstanceId}/tasks    → list tasks
- *   /containers/{containerId}/tasks/{taskId}/states/claimed              → claim
- *   /containers/{containerId}/tasks/{taskId}/states/started              → start
- *   /containers/{containerId}/tasks/{taskId}/states/completed            → complete
- *   /containers/{containerId}/tasks/{taskId}/states/released             → release
- */
 class KieClient {
   constructor() {
     this.client = axios.create({
@@ -27,46 +13,46 @@ class KieClient {
         Accept: 'application/json',
         'Content-Type': 'application/json',
       },
-      timeout: 10000, // 10 s
+      timeout: Number(process.env.KIE_SERVER_TIMEOUT_MS || 10000),
     });
 
-    // Unified response/error logging
     this.client.interceptors.response.use(
       (res) => res,
       (err) => {
         const msg = err.response?.data?.message || err.response?.data || err.message;
-        console.error(`[KieClient] HTTP ${err.response?.status || 'N/A'} — ${msg}`);
+        console.error(`[KieClient] HTTP ${err.response?.status || 'N/A'} - ${msg}`);
         return Promise.reject(err);
       }
     );
   }
 
-  // ─────────────────────────────────────────────────────────────
-  // Process management
-  // ─────────────────────────────────────────────────────────────
-
-  /**
-   * Start a new process instance.
-   * @param {string} containerId
-   * @param {string} processId
-   * @param {object} variables  — BPMN process variables
-   * @returns {Promise<number>} KIE process instance id
-   */
   async startProcess(containerId, processId, variables = {}) {
     try {
       const response = await this.client.post(
         `/containers/${containerId}/processes/${processId}/instances`,
         variables
       );
-      return response.data; // numeric process instance id
+      return response.data;
     } catch (error) {
       throw new AppError('Failed to start workflow process on KIE Server', 500);
     }
   }
 
-  /**
-   * Abort (cancel) a running process instance.
-   */
+  async getProcessInstance(containerId, processInstanceId, { withVars = true } = {}) {
+    try {
+      const response = await this.client.get(
+        `/containers/${containerId}/processes/instances/${processInstanceId}`,
+        { params: { withVars } }
+      );
+      return response.data;
+    } catch (error) {
+      throw new AppError(
+        `Failed to fetch process instance ${processInstanceId} from KIE Server`,
+        500
+      );
+    }
+  }
+
   async abortProcess(containerId, processInstanceId) {
     try {
       await this.client.delete(
@@ -78,56 +64,35 @@ class KieClient {
     }
   }
 
-  // ─────────────────────────────────────────────────────────────
-  // Human Task lifecycle
-  // ─────────────────────────────────────────────────────────────
+  async getTasksByProcessInstance(
+    processInstanceId,
+    statuses = ['Ready', 'Reserved', 'InProgress'],
+    { page = 0, pageSize = 10 } = {}
+  ) {
+    const params = this._queryParams({ status: statuses, page, pageSize });
 
-  /**
-   * Get all human tasks for a given process instance that are in the
-   * specified status (default: Ready, Reserved, InProgress).
-   *
-   * KIE Server query endpoint:
-   *   GET /containers/{cId}/processes/instances/{pId}/tasks
-   *       ?status=Ready&status=Reserved&status=InProgress
-   *
-   * @param {string} containerId
-   * @param {number|string} processInstanceId
-   * @param {string[]} statuses  — e.g. ['Ready','Reserved','InProgress']
-   * @returns {Promise<Array>} array of task summary objects
-   */
-async getTasksByProcessInstance(
-  processInstanceId,
-  statuses = ['Ready', 'Reserved', 'InProgress']
-) {
-  console.log(processInstanceId)
-  try {
-    const response = await this.client.get(
-      `/queries/tasks/instances/process/${processInstanceId}`,
-      {
-        params: {
-          status: statuses,
-          page: 0,
-          pageSize: 10,
-        },
-      }
-    );
-
-    return response.data['task-summary'] || [];
-  } catch (error) {
-    throw new AppError(
-      `Failed to fetch tasks for process instance ${processInstanceId}`,
-      500
-    );
+    try {
+      const response = await this.client.get(
+        `/queries/tasks/instances/process/${processInstanceId}?${params.toString()}`
+      );
+      return this._taskSummaryList(response.data);
+    } catch (error) {
+      throw new AppError(
+        `Failed to fetch tasks for process instance ${processInstanceId}`,
+        500
+      );
+    }
   }
-}
 
-  /**
-   * Claim a task (move from Ready → Reserved) so a specific user owns it.
-   *
-   * @param {string} containerId
-   * @param {number|string} taskId
-   * @param {string} userId  — KIE / jBPM user id of the claimant
-   */
+  async getTask(containerId, taskId) {
+    try {
+      const response = await this.client.get(`/containers/${containerId}/tasks/${taskId}`);
+      return response.data;
+    } catch (error) {
+      throw new AppError(`Failed to fetch task ${taskId} from KIE Server`, 500);
+    }
+  }
+
   async claimTask(containerId, taskId, userId) {
     try {
       await this.client.put(
@@ -140,13 +105,6 @@ async getTasksByProcessInstance(
     }
   }
 
-  /**
-   * Start a task (move from Reserved → InProgress).
-   *
-   * @param {string} containerId
-   * @param {number|string} taskId
-   * @param {string} userId
-   */
   async startTask(containerId, taskId, userId) {
     try {
       await this.client.put(
@@ -159,15 +117,6 @@ async getTasksByProcessInstance(
     }
   }
 
-  /**
-   * Complete a task (move from InProgress → Completed) and pass output variables.
-   * These variables are evaluated by the gateway expression in the BPMN.
-   *
-   * @param {string} containerId
-   * @param {number|string} taskId
-   * @param {string} userId
-   * @param {object} outputVariables  — e.g. { deptHeadApproved: true }
-   */
   async completeTask(containerId, taskId, userId, outputVariables = {}) {
     try {
       await this.client.put(
@@ -180,13 +129,6 @@ async getTasksByProcessInstance(
     }
   }
 
-  /**
-   * Release a task (move from Reserved → Ready), giving it back to the group pool.
-   *
-   * @param {string} containerId
-   * @param {number|string} taskId
-   * @param {string} userId
-   */
   async releaseTask(containerId, taskId, userId) {
     try {
       await this.client.put(
@@ -197,6 +139,31 @@ async getTasksByProcessInstance(
     } catch (error) {
       throw new AppError(`Failed to release task ${taskId} on KIE Server`, 500);
     }
+  }
+
+  _queryParams(params) {
+    const query = new URLSearchParams();
+
+    Object.entries(params).forEach(([key, value]) => {
+      if (Array.isArray(value)) {
+        value.forEach((item) => query.append(key, item));
+        return;
+      }
+
+      if (value !== undefined && value !== null) {
+        query.append(key, value);
+      }
+    });
+
+    return query;
+  }
+
+  _taskSummaryList(data) {
+    if (!data) return [];
+    if (Array.isArray(data)) return data;
+    if (Array.isArray(data['task-summary'])) return data['task-summary'];
+    if (data['task-summary']) return [data['task-summary']];
+    return [];
   }
 }
 

@@ -30,11 +30,35 @@ WorkflowInstance.init({
   status: {
     type: DataTypes.STRING,
   },
+  process_state: {
+    type: DataTypes.STRING,
+  },
+  current_task_id: {
+    type: DataTypes.BIGINT,
+  },
   current_task: {
+    type: DataTypes.STRING,
+  },
+  current_task_status: {
     type: DataTypes.STRING,
   },
   current_assignee: {
     type: DataTypes.STRING,
+  },
+  assigned_groups: {
+    type: DataTypes.JSON,
+    defaultValue: [],
+  },
+  active_tasks: {
+    type: DataTypes.JSON,
+    defaultValue: [],
+  },
+  workflow_variables: {
+    type: DataTypes.JSON,
+    defaultValue: {},
+  },
+  last_synced_at: {
+    type: DataTypes.DATE,
   },
   started_by: {
     type: DataTypes.UUID,

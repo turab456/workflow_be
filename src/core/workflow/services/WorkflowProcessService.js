@@ -1,6 +1,7 @@
 const kieClient = require('../client/KieClient');
 const WorkflowDefinition = require('../models/WorkflowDefinition');
 const WorkflowInstance = require('../models/WorkflowInstance');
+const workflowTaskService = require('./WorkflowTaskService');
 const AppError = require('../../../shared/exceptions/AppError');
 
 class WorkflowProcessService {
@@ -43,6 +44,8 @@ class WorkflowProcessService {
       started_by: userId,
       started_at: new Date()
     });
+
+    instance.workflowState = await workflowTaskService.getWorkflowStateForInstance(instance);
 
     return instance;
   }
