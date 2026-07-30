@@ -101,7 +101,11 @@ class KieClient {
         { params: { user: userId } }
       );
     } catch (error) {
-      throw new AppError(`Failed to claim task ${taskId} on KIE Server`, 500);
+      const detail = error.response?.data?.message || error.response?.data || error.message;
+      throw new AppError(
+        `Failed to claim task ${taskId} as user "${userId}" on KIE Server: ${detail}`,
+        error.response?.status || 500
+      );
     }
   }
 
@@ -113,7 +117,11 @@ class KieClient {
         { params: { user: userId } }
       );
     } catch (error) {
-      throw new AppError(`Failed to start task ${taskId} on KIE Server`, 500);
+      const detail = error.response?.data?.message || error.response?.data || error.message;
+      throw new AppError(
+        `Failed to start task ${taskId} as user "${userId}" on KIE Server: ${detail}`,
+        error.response?.status || 500
+      );
     }
   }
 
@@ -125,7 +133,11 @@ class KieClient {
         { params: { user: userId } }
       );
     } catch (error) {
-      throw new AppError(`Failed to complete task ${taskId} on KIE Server`, 500);
+      const detail = error.response?.data?.message || error.response?.data || error.message;
+      throw new AppError(
+        `Failed to complete task ${taskId} as user "${userId}" on KIE Server: ${detail}`,
+        error.response?.status || 500
+      );
     }
   }
 

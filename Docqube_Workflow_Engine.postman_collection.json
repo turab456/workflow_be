@@ -1,0 +1,207 @@
+{
+	"info": {
+		"_postman_id": "a1b2c3d4-e5f6-7890-abcd-1234567890ab",
+		"name": "Docqube Workflow Engine API",
+		"description": "Postman Collection for testing the Generic Workflow Engine Microservice endpoints integrated with Docqube.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"variable": [
+		{
+			"key": "baseUrl",
+			"value": "http://localhost:3000",
+			"type": "string"
+		},
+		{
+			"key": "bearerToken",
+			"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6InVzcl9kb2NxdWJlX3Rlc3RfMTIzIiwiZW1haWwiOiJ0ZXN0ZXJAZG9jcXViZS5jb20iLCJ0ZW5hbnRJZCI6InRlbmFudF9hY21lX2NvcnAiLCJncm91cHMiOlsiZGVwYXJ0bWVudF9oZWFkcyIsInByb2N1cmVtZW50IiwibGVnYWwiXSwiaWF0IjoxNzg1NDA0MzI1LCJleHAiOjE4MTY5NDAzMjV9.omM_-dbV33orHBISlF4ahpPgEg9oyaPB1JQMH4t1npA",
+			"type": "string"
+		},
+		{
+			"key": "instanceId",
+			"value": "replace-with-workflow-instance-uuid",
+			"type": "string"
+		},
+		{
+			"key": "taskId",
+			"value": "1",
+			"type": "string"
+		}
+	],
+	"auth": {
+		"type": "bearer",
+		"bearer": [
+			{
+				"key": "token",
+				"value": "{{bearerToken}}",
+				"type": "string"
+			}
+		]
+	},
+	"item": [
+		{
+			"name": "Health Check",
+			"request": {
+				"auth": {
+					"type": "noauth"
+				},
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{baseUrl}}/health",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"health"
+					]
+				},
+				"description": "Check if the Docqube Workflow Engine microservice is running."
+			},
+			"response": []
+		},
+		{
+			"name": "1. Start Workflow Instance",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"workflowCode\": \"CONTRACT_REQUEST\",\n  \"businessRecordId\": \"doc_acme_998877\",\n  \"variables\": {\n    \"contractValue\": 250000,\n    \"contractType\": \"VENDOR_AGREEMENT\",\n    \"department\": \"Engineering\",\n    \"vendor\": \"Acme Tech Solutions\"\n  },\n  \"tenantId\": \"tenant_acme_corp\"\n}"
+				},
+				"url": {
+					"raw": "{{baseUrl}}/api/v1/workflow/instances",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"api",
+						"v1",
+						"workflow",
+						"instances"
+					]
+				},
+				"description": "Starts a new workflow process instance for a document created in Docqube."
+			},
+			"response": []
+		},
+		{
+			"name": "2. Get Live Workflow State",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{baseUrl}}/api/v1/workflow/instances/{{instanceId}}/state",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"api",
+						"v1",
+						"workflow",
+						"instances",
+						"{{instanceId}}",
+						"state"
+					]
+				},
+				"description": "Retrieves the live workflow status, current assigned group, and variables synced from jBPM."
+			},
+			"response": []
+		},
+		{
+			"name": "3. Get Active Human Tasks",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{baseUrl}}/api/v1/workflow/instances/{{instanceId}}/tasks",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"api",
+						"v1",
+						"workflow",
+						"instances",
+						"{{instanceId}}",
+						"tasks"
+					]
+				},
+				"description": "Fetches active human tasks and their potential owner groups for a given workflow instance."
+			},
+			"response": []
+		},
+		{
+			"name": "4. Complete Task — Dept Head Approve",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"outputVariables\": {\n    \"deptHeadApproved\": true\n  }\n}"
+				},
+				"url": {
+					"raw": "{{baseUrl}}/api/v1/workflow/instances/{{instanceId}}/tasks/{{taskId}}/complete",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"api",
+						"v1",
+						"workflow",
+						"instances",
+						"{{instanceId}}",
+						"tasks",
+						"{{taskId}}",
+						"complete"
+					]
+				},
+				"description": "Completes a human task with 'Approved' action and output variables."
+			},
+			"response": []
+		},
+		{
+			"name": "5. Complete Task (Reject)",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"outputVariables\": {\n    \"action\": \"Rejected\",\n    \"comment\": \"Budget limit exceeded.\"\n  }\n}"
+				},
+				"url": {
+					"raw": "{{baseUrl}}/api/v1/workflow/instances/{{instanceId}}/tasks/{{taskId}}/complete",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"api",
+						"v1",
+						"workflow",
+						"instances",
+						"{{instanceId}}",
+						"tasks",
+						"{{taskId}}",
+						"complete"
+					]
+				},
+				"description": "Completes a human task with 'Rejected' action."
+			},
+			"response": []
+		}
+	]
+}

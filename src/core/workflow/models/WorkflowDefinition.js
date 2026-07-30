@@ -29,8 +29,8 @@ WorkflowDefinition.init({
     type: DataTypes.STRING,
   },
   customer_id: {
-    type: DataTypes.UUID,
-    allowNull: true, // For customer specific overrides
+    type: DataTypes.STRING,
+    allowNull: true, // For customer/tenant specific overrides (e.g. string or UUID)
   },
   status: {
     type: DataTypes.STRING,
@@ -38,6 +38,35 @@ WorkflowDefinition.init({
   },
   description: {
     type: DataTypes.STRING,
+  },
+  /**
+   * task_schemas — defines the output variables each Human Task expects.
+   *
+   * This is the contract between the BPMN and Docqube's generic approval UI.
+   * Docqube reads this schema when rendering a task, builds the form dynamically,
+   * and sends back the correct outputVariables on completion.
+   *
+   * Format:
+   * {
+   *   "<TaskName>": {
+   *     "<variableName>": { "type": "boolean|string|number", "label": "...", "required": true }
+   *   }
+   * }
+   *
+   * Example:
+   * {
+   *   "DepartmentHeadApproval": {
+   *     "deptHeadApproved": { "type": "boolean", "label": "Approve?", "required": true }
+   *   },
+   *   "ProcurementReview": {
+   *     "procurementApproved": { "type": "boolean", "label": "Approve?", "required": true },
+   *     "legalRequired":       { "type": "boolean", "label": "Route to Legal?", "required": false }
+   *   }
+   * }
+   */
+  task_schemas: {
+    type: DataTypes.JSON,
+    defaultValue: {},
   },
   createdBy: {
     type: DataTypes.UUID,

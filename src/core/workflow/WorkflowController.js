@@ -89,18 +89,42 @@ class WorkflowController {
    * GET /api/v1/workflow/instances/:instanceId/tasks
    *
    * List all active Human Tasks for a process instance.
+   * Each task is enriched with an `outputSchema` derived from
+   * WorkflowDefinition.task_schemas so Docqube can dynamically
+   * build the approval/decision UI without hardcoding variable names.
    *
    * Params: instanceId — UUID of the WorkflowInstance
    *
-   * Returns: array of normalized task objects {
-   *   id, name, status, actualOwner, potentialOwners, processInstanceId
-   * }
+   * Returns: array of task objects with:
+   *   id, name, status, actualOwner, potentialOwners, processInstanceId,
+   *   outputSchema: { variableName: { type, label, required } }
    */
   async getActiveTasks(req, res, next) {
     try {
       const { instanceId } = req.params;
       const tasks = await workflowTaskService.getActiveTasks(instanceId);
-      return ApiResponse.success(res, tasks, 'Active tasks retrieved successfully.');
+
+      // Enrich tasks with their outputSchema from the WorkflowDefinition
+      const WorkflowInstance = require('./models/WorkflowInstance');
+      const WorkflowDefinition = require('./models/WorkflowDefinition');
+
+      const instance = await WorkflowInstance.findByPk(instanceId)
+        || await WorkflowInstance.findOne({ where: { process_instance_id: instanceId } });
+
+      let taskSchemas = {};
+      console.log(tasks)
+      if (instance) {
+        const definition = await WorkflowDefinition.findByPk(instance.workflow_definition_id);
+        taskSchemas = definition?.task_schemas || {};
+      }
+
+      const enrichedTasks = tasks.map(task => ({
+        ...task,
+        // task-name from jBPM (e.g. "DepartmentHeadApproval")
+        outputSchema: taskSchemas[task['task-name'] || task.name] || {},
+      }));
+console.log(enrichedTasks)
+      return ApiResponse.success(res, enrichedTasks, 'Active tasks retrieved successfully.');
     } catch (error) {
       next(error);
     }

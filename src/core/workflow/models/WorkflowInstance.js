@@ -25,7 +25,7 @@ WorkflowInstance.init({
     type: DataTypes.STRING, // e.g. CONTRACT_REQUEST
   },
   business_record_id: {
-    type: DataTypes.UUID,
+    type: DataTypes.STRING, // Supports UUIDs or custom string IDs from Docqube
   },
   status: {
     type: DataTypes.STRING,
@@ -61,7 +61,7 @@ WorkflowInstance.init({
     type: DataTypes.DATE,
   },
   started_by: {
-    type: DataTypes.UUID,
+    type: DataTypes.STRING, // User ID string from Docqube
   },
   started_at: {
     type: DataTypes.DATE,

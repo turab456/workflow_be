@@ -161,22 +161,38 @@ class WorkflowTaskService {
     }
   }
 
-  async _resolveInstance(businessRecordId, workflowCode = null) {
-    const where = {
-      business_record_id: businessRecordId,
-      status: 'ACTIVE',
-    };
+  async _resolveInstance(recordOrInstanceId, workflowCode = null) {
+    if (!recordOrInstanceId) {
+      throw new AppError('Workflow instance ID or business record ID is required.', 400);
+    }
 
-    if (workflowCode) where.business_module = workflowCode;
+    // 1. Try finding by WorkflowInstance Primary Key (id)
+    let instance = await WorkflowInstance.findByPk(recordOrInstanceId);
 
-    const instance = await WorkflowInstance.findOne({
-      where,
-      order: [['started_at', 'DESC']],
-    });
+    // 2. If not found, try finding by process_instance_id (if numeric)
+    if (!instance && !isNaN(Number(recordOrInstanceId))) {
+      instance = await WorkflowInstance.findOne({
+        where: { process_instance_id: Number(recordOrInstanceId) }
+      });
+    }
+
+    // 3. If not found, try finding by business_record_id
+    if (!instance) {
+      const where = {
+        business_record_id: recordOrInstanceId,
+        status: 'ACTIVE',
+      };
+      if (workflowCode) where.business_module = workflowCode;
+
+      instance = await WorkflowInstance.findOne({
+        where,
+        order: [['started_at', 'DESC']],
+      });
+    }
 
     if (!instance) {
       throw new AppError(
-        `No active workflow instance found for record ${businessRecordId}`,
+        `No active workflow instance found for identifier "${recordOrInstanceId}"`,
         404
       );
     }
@@ -278,20 +294,40 @@ class WorkflowTaskService {
       return this._kieUserForRole(actor) || actor;
     }
 
+    // 1. Explicit KIE user identity on the actor/JWT
     if (actor.kieUserId || actor.kie_user_id) {
       return actor.kieUserId || actor.kie_user_id;
     }
 
+    // 2. Role mapped to a KIE user via env var (e.g. KIE_USER_DEPARTMENT_HEAD)
     if (actor.role) {
       const roleUser = this._kieUserForRole(actor.role);
       if (roleUser) return roleUser;
     }
 
+    // 3. Use the actor's username or email if set
     if (actor.username || actor.email) {
       return actor.username || actor.email;
     }
 
-    throw new AppError('Unable to resolve KIE user for workflow actor.', 400);
+    // 4. Final fallback: use the configured KIE Server admin user.
+    //    This applies when Docqube passes a JWT with only id/tenantId/groups
+    //    and no KIE-specific user identity.
+    const kieAdmin = process.env.KIE_SERVER_USER;
+    if (kieAdmin) {
+      console.warn(
+        `[WorkflowTaskService] No KIE user identity found on actor — ` +
+        `falling back to KIE_SERVER_USER ("${kieAdmin}"). ` +
+        `Set kieUserId in the JWT or KIE_USER_<ROLE> env var to avoid this.`
+      );
+      return kieAdmin;
+    }
+
+    throw new AppError(
+      'Unable to resolve KIE user for workflow actor. ' +
+      'Provide kieUserId in the JWT payload or set KIE_SERVER_USER in env.',
+      400
+    );
   }
 
   _matchesKieGroup(actor, owner) {

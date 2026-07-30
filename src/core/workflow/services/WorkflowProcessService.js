@@ -57,6 +57,7 @@ class WorkflowProcessService {
   }
 
   async _resolveDefinition(workflowCode, customerId = null) {
+    console.log(workflowCode)
     let definition = null;
 
     if (customerId) {
@@ -70,7 +71,7 @@ class WorkflowProcessService {
         where: { code: workflowCode, customer_id: null, status: 'ACTIVE' }
       });
     }
-
+    console.log("defination", definition)
     if (!definition) {
       throw new AppError(`Workflow definition not found for code: ${workflowCode}`, 404);
     }
