@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const controller = require('./WorkflowController');
+const definitionController = require('./WorkflowDefinitionController');
 const { authenticate } = require('../../shared/middleware/auth');
 
 /**
@@ -28,5 +29,11 @@ router.get('/instances/:instanceId/tasks', controller.getActiveTasks);
 // ── Complete a specific Human Task ───────────────────────────────────────────
 // Body: { outputVariables: {} }
 router.post('/instances/:instanceId/tasks/:taskId/complete', controller.completeTask);
+
+// ── Workflow Definitions ──────────────────────────────────────────────────────
+router.get('/definitions', definitionController.list);
+router.get('/definitions/:id', definitionController.getOne);
+router.post('/definitions', definitionController.create);
+router.delete('/definitions/:id', definitionController.deactivate);
 
 module.exports = router;
