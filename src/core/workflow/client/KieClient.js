@@ -38,6 +38,19 @@ class KieClient {
     }
   }
 
+  async setProcessVariables(containerId, processInstanceId, variables = {}) {
+    try {
+      await this.client.post(
+        `/containers/${containerId}/processes/instances/${processInstanceId}/variables`,
+        variables
+      );
+      console.log(`[KieClient] Successfully set process variables for instance ${processInstanceId}`);
+    } catch (error) {
+      console.error('[KieClient] Failed to set process variables:', error);
+      // We don't want to fail the whole task if variable setting fails, just log it.
+    }
+  }
+
   async getProcessInstance(containerId, processInstanceId, { withVars = true } = {}) {
     try {
       const response = await this.client.get(

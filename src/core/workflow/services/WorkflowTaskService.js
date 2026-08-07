@@ -19,6 +19,17 @@ class WorkflowTaskService {
 
     await this._claimAndStartIfNeeded(instance.container_id, task, kieUserId);
 
+    console.log(`[DEBUG WorkflowTaskService] CompleteTask triggered. outputVariables:`, outputVariables);
+
+    // Set process variables directly in case the User Task doesn't have output data mappings configured
+    if (outputVariables && Object.keys(outputVariables).length > 0) {
+      await kieClient.setProcessVariables(
+        instance.container_id,
+        instance.process_instance_id,
+        outputVariables
+      );
+    }
+
     await kieClient.completeTask(
       instance.container_id,
       task.id,
